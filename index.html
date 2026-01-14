@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>圣经阅读签到</title>
+    <!-- 引入微信JS-SDK用于判断环境 -->
+    <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+    <!-- 引入腾讯云开发SDK -->
+    <script src="https://unpkg.com/tcb-js-sdk@latest/dist/tcb.js"></script>
+    <style>
+        /* 基础样式保持不变 */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+        body { background-color: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; font-size: 20px; margin-bottom: 20px; }
+        h2 { font-size: 16px; color: #333; margin: 15px 0 10px; }
+        h3 { font-size: 15px; color: #333; margin-bottom: 8px; }
+        
+        /* 登录按钮样式 */
+        .login-area { text-align: center; margin-bottom: 20px; }
+        #wxLoginBtn { background-color: #07c160; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-size: 16px; cursor: pointer; }
+        
+        /* 用户信息 */
+        .user-info { text-align: center; padding: 10px; background: #f0f8fb; border-radius: 6px; margin-bottom: 20px; display: none; }
+        .user-info img { width: 60px; height: 60px; border-radius: 50%; margin-bottom: 5px; }
+        .user-info p { font-size: 14px; color: #555; }
+        
+        /* 今日作业 */
+        .today-task { background: #f0f8fb; border-left: 4px solid #1989fa; padding: 15px; border-radius: 6px; margin-bottom: 25px; }
+        .today-task p { font-size: 14px; color: #555; line-height: 1.6; }
+        .quick-sign { margin-top: 10px; padding: 8px 12px; background: #1989fa; color: white; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+        
+        /* 格子布局 */
+        .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-bottom: 15px; max-height: 200px; overflow-y: auto; padding: 5px; border: 1px solid #eee; border-radius: 6px; }
+        .book-item { padding: 8px 5px; text-align: center; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .book-item:hover { background: #f5f5f5; }
+        .book-item.active { background: #07c160; color: white; border-color: #07c160; }
+        
+        .chapter-selector { margin-bottom: 20px; }
+        .chapter-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-top: 10px; max-height: 150px; overflow-y: auto; padding: 5px; border: 1px solid #eee; border-radius: 6px; }
+        .chapter-item { padding: 6px 0; text-align: center; border: 1px solid #ddd; border-radius: 3px; font-size: 12px; cursor: pointer; }
+        .chapter-item:hover { background: #f5f5f5; }
+        .chapter-item.active { background: #07c160; color: white; border-color: #07c160; }
+        
+        /* 作业布置区 (组长/班长) */
+        .task-setting { background: #fef7e0; border: 1px solid #ffc53d; padding: 15px; border-radius: 6px; margin-bottom: 25px; display: none; }
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-group button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+        #saveTaskBtn { background: #ffc53d; color: #333; }
+        #clearTaskBtn { background: #f5f5f5; color: #666; }
+        
+        /* 签到按钮 */
+        #signBtn { width: 100%; padding: 12px; background: #07c160; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin: 15px 0; }
+        
+        /* 进度与记录 */
+        .progress { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        .progress-item { margin-bottom: 10px; font-size: 15px; color: #333; }
+        
+        .all-records { margin-top: 20px; padding: 15px; background: #f8f8f8; border-radius: 6px; display: none; }
+        .member-item { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+        .tips { color: #999; font-size: 12px; margin-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>圣经阅读签到</h1>
+
+        <!-- 1. 登录区域 -->
+        <div class="login-area" id="loginArea">
+            <button id="wxLoginBtn">微信一键登录</button>
+        </div>
+
+        <!-- 2. 用户信息 (登录后显示) -->
+        <div class="user-info" id="userInfo">
+            <img id="avatarUrl" src="" alt="头像">
+            <p>欢迎回来，<span id="nickName"></span></p>
+            <p>当前身份：<span id="roleText">普通组员</span></p>
+        </div>
+
+        <!-- 3. 今日作业 -->
+        <div class="today-task" id="todayTask">
+            <h3>今日阅读作业</h3>
+            <p id="taskContent">加载中...</p>
+            <button class="quick-sign" id="quickSignBtn">快速签到今日作业</button>
+        </div>
+
+        <!-- 4. 作业布置区 (组长/班长可见) -->
+        <div class="task-setting" id="taskSetting">
+            <h3>布置今日阅读作业</h3>
+            <p style="color:#ff9500; font-size:12px;">提示：班长发布的作业优先级高于组长。</p>
+            
+            <!-- 书卷选择 -->
+            <div class="book-selector">
+                <h2>旧约</h2>
+                <div class="book-grid" id="oldTestamentGrid"></div>
+                <h2>新约</h2>
+                <div class="book-grid" id="newTestamentGrid"></div>
+            </div>
+            
+            <!-- 章节选择 -->
+            <div class="chapter-selector" id="chapterSelector" style="display:none;">
+                <h3>选择章节（可多选）：<span id="selectedBookName"></span></h3>
+                <div class="chapter-grid" id="chapterGrid"></div>
+            </div>
+            
+            <!-- 预览 -->
+            <div style="margin-top:15px;">
+                <h3>已选作业：</h3>
+                <p id="selectedTaskText" style="font-size:13px; color:#666;">未选择任何章节</p>
+            </div>
+            
+            <div class="btn-group">
+                <button id="saveTaskBtn">发布今日作业</button>
+                <button id="clearTaskBtn">清空选择</button>
+            </div>
+        </div>
+
+        <!-- 5. 个人签到区 -->
+        <div class="personal-sign">
+            <h3>手动选择章节签到</h3>
+            
+            <div class="book-selector">
+                <h2>旧约</h2>
+                <div class="book-grid" id="personalOldTestamentGrid"></div>
+                <h2>新约</h2>
+                <div class="book-grid" id="personalNewTestamentGrid"></div>
+            </div>
+            
+            <div class="chapter-selector" id="personalChapterSelector" style="display:none;">
+                <h3>选择章节：<span id="personalSelectedBookName"></span></h3>
+                <div class="chapter-grid" id="personalChapterGrid"></div>
+            </div>
+            
+            <button id="signBtn">确认签到所选章节</button>
+        </div>
+
+        <!-- 6. 进度与记录 -->
+        <div class="progress" id="progressArea"></div>
+        <div class="all-records" id="allRecords"></div>
+    </div>
+
+    <script>
+        // ========== 配置区 (请修改这里) ==========
+        const CONFIG = {
+            // 公众号AppID (必须填写！)
+            APPID: "wx3354caabebd5d4f2",
+            // 腾讯云开发环境ID
+            CLOUD_ENV: "你的云开发环境ID",
+            // 后端PHP接口地址 (用于获取OpenID)
+            GET_OPENID_URL: "http://localhost/get_openid.php",
+            // 身份白名单 (替换成实际的OpenID)
+            ROLE_WHITELIST: {
+                "组长": ["o6_bmjrPTlm6_2sgVt7hMZOPfL2M"],
+                "班长": ["o6_bmjrPTlm6_2sgVt7hMZOPfL2N"]
+            }
+        };
+
+        // ========== 数据定义 ==========
+        const BIBLE_DATA = {
+            oldTestament: { "创世纪":50, "出埃及记":40, "利未记":27, "民数记":36, "申命记":34, "约书亚记":24, "士师记":21, "路得记":4, "撒母耳记上":31, "撒母耳记下":24, "列王纪上":22, "列王纪下":25, "历代志上":29, "历代志下":36, "以斯拉记":10, "尼希米记":13, "以斯帖记":10, "约伯记":42, "诗篇":150, "箴言":31, "传道书":12, "雅歌":8, "以赛亚书":66, "耶利米书":52, "耶利米哀歌":5, "以西结书":48, "但以理书":12, "何西阿书":14, "约珥书":3, "阿摩司书":9, "俄巴底亚书":1, "约拿书":4, "弥迦书":7, "那鸿书":3, "哈巴谷书":3, "西番雅书":3, "哈该书":2, "撒迦利亚书":14, "玛拉基书":4 },
+            newTestament: { "马太福音":28, "马可福音":16, "路加福音":24, "约翰福音":21, "使徒行传":28, "罗马书":16, "哥林多前书":16, "哥林多后书":13, "加拉太书":6, "以弗所书":6, "腓立比书":4, "歌罗西书":4, "帖撒罗尼迦前书":5, "帖撒罗尼迦后书":3, "提摩太前书":6, "提摩太后书":4, "提多书":3, "腓利门书":1, "希伯来书":13, "雅各书":5, "彼得前书":5, "彼得后书":3, "约翰一书":5, "约翰二书":1, "约翰三书":1, "犹大书":1, "启示录":22 }
+        };
+
+        // ========== 全局变量 ==========
+        let app;
+        let db;
+        let currentUser = {
+            openid: "",
+            nickname: "",
+            avatar: "",
+            role: "member" // member, leader, monitor
+        };
+        let today = new Date().toLocaleDateString();
+        let todayTask = { leader: [], monitor: [] };
+        let tempTask = [];
+        
+        // 个人签到区临时变量（显式初始化，避免undefined问题）
+        let personalTempSelectedBook = '';
+        let personalTempSelectedChapters = [];
+        // 作业布置区临时变量
+        let tempSelectedBook = '';
+        let tempSelectedChapters = [];
+
+        // ========== DOM 元素 ==========
+        const loginArea = document.getElementById('loginArea');
+        const userInfo = document.getElementById('userInfo');
+        const avatarUrl = document.getElementById('avatarUrl');
+        const nickName = document.getElementById('nickName');
+        const roleText = document.getElementById('roleText');
+        const wxLoginBtn = document.getElementById('wxLoginBtn');
+        const taskContent = document.getElementById('taskContent');
+        const quickSignBtn = document.getElementById('quickSignBtn');
+        const taskSetting = document.getElementById('taskSetting');
+        const oldTestamentGrid = document.getElementById('oldTestamentGrid');
+        const newTestamentGrid = document.getElementById('newTestamentGrid');
+        const chapterSelector = document.getElementById('chapterSelector');
+        const selectedBookName = document.getElementById('selectedBookName');
+        const chapterGrid = document.getElementById('chapterGrid');
+        const selectedTaskText = document.getElementById('selectedTaskText');
+        const saveTaskBtn = document.getElementById('saveTaskBtn');
+        const clearTaskBtn = document.getElementById('clearTaskBtn');
+        const personalOldTestamentGrid = document.getElementById('personalOldTestamentGrid');
+        const personalNewTestamentGrid = document.getElementById('personalNewTestamentGrid');
+        const personalChapterSelector = document.getElementById('personalChapterSelector');
+        const personalSelectedBookName = document.getElementById('personalSelectedBookName');
+        const personalChapterGrid = document.getElementById('personalChapterGrid');
+        const signBtn = document.getElementById('signBtn');
+        const progressArea = document.getElementById('progressArea');
+        const allRecords = document.getElementById('allRecords');
+
+        // ========== 初始化 ==========
+        window.onload = init;
+
+        async function init() {
+            try {
+                // 1. 初始化云开发
+                app = tcb.init({ env: CONFIG.CLOUD_ENV });
+                await app.auth({ persistence: "local" }).anonymousAuthProvider().signIn();
+                db = app.database();
+
+                // 2. 检查URL是否有code (微信授权回调)
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                
+                if (code) {
+                    handleLogin(code);
+                } else {
+                    // 无code，检查本地缓存
+                    const savedUser = localStorage.getItem('bible_user');
+                    if (savedUser) {
+                        currentUser = JSON.parse(savedUser);
+                        renderUI();
+                    } else {
+                        // 未登录，显示登录按钮
+                        loginArea.style.display = 'block';
+                    }
+                }
+
+                // 3. 初始化UI (无论是否登录，先渲染章节选择格子)
+                initBookGrid(personalOldTestamentGrid, BIBLE_DATA.oldTestament, false);
+                initBookGrid(personalNewTestamentGrid, BIBLE_DATA.newTestament, false);
+            } catch (e) {
+                console.error("初始化失败：", e);
+                alert("系统初始化失败，请刷新页面重试");
+            }
+        }
+
+        // ========== 登录逻辑 ==========
+wxLoginBtn.onclick = function() {
+    if (!CONFIG.APPID || CONFIG.APPID === "你的公众号AppID") {
+        alert("请先配置公众号AppID！");
+        return;
+    }
+            // 构造微信授权URL
+            const redirectUri = encodeURIComponent(window.location.href.split('?')[0]);
+            const scope = "snsapi_base"; // 静默授权，只获取openid
+            const authUrl = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${CONFIG.APPID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=STATE#wechat_redirect`;
+            
+            // 跳转
+            window.location.href = authUrl;
+        };
+
+        async function handleLogin(code) {
+            try {
+                // 调用后端接口获取OpenID
+                const response = await fetch(`${CONFIG.GET_OPENID_URL}?code=${code}`);
+                if (!response.ok) throw new Error("接口请求失败");
+                const data = await response.json();
+                
+                if (data.openid) {
+                    currentUser.openid = data.openid;
+                    // 模拟用户信息（实际可通过snsapi_userinfo获取真实昵称和头像）
+                    currentUser.nickname = "用户" + currentUser.openid.substring(0, 8);
+                    currentUser.avatar = "https://via.placeholder.com/60";
+
+                    // 判断身份
+                    if (CONFIG.ROLE_WHITELIST["组长"].includes(currentUser.openid)) {
+                        currentUser.role = "leader";
+                        currentUser.nickname = "组长";
+                    } else if (CONFIG.ROLE_WHITELIST["班长"].includes(currentUser.openid)) {
+                        currentUser.role = "monitor";
+                        currentUser.nickname = "班长";
+                    } else {
+                        currentUser.role = "member";
+                    }
+
+                    // 保存到本地
+                    localStorage.setItem('bible_user', JSON.stringify(currentUser));
+                    // 移除URL中的code参数
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    
+                    renderUI();
+                } else {
+                    alert("登录失败：" + (data.errmsg || "获取OpenID失败"));
+                }
+            } catch (e) {
+                alert("网络错误，请重试");
+                console.error("登录处理失败：", e);
+            }
+        }
+
+        function renderUI() {
+            loginArea.style.display = 'none';
+            userInfo.style.display = 'block';
+            
+            avatarUrl.src = currentUser.avatar;
+            nickName.textContent = currentUser.nickname;
+            
+            if (currentUser.role === 'leader') {
+                roleText.textContent = "组长";
+                taskSetting.style.display = 'block';
+                allRecords.style.display = 'block';
+                initBookGrid(oldTestamentGrid, BIBLE_DATA.oldTestament, true);
+                initBookGrid(newTestamentGrid, BIBLE_DATA.newTestament, true);
+            } else if (currentUser.role === 'monitor') {
+                roleText.textContent = "班长";
+                taskSetting.style.display = 'block';
+                allRecords.style.display = 'block';
+                initBookGrid(oldTestamentGrid, BIBLE_DATA.oldTestament, true);
+                initBookGrid(newTestamentGrid, BIBLE_DATA.newTestament, true);
+            } else {
+                roleText.textContent = "普通组员";
+            }
+
+            loadTask();
+            loadMyProgress();
+            if (currentUser.role !== 'member') loadAllRecords();
+        }
+
+        // ========== 作业逻辑 ==========
+        async function loadTask() {
+            try {
+                const res = await db.collection('bible_tasks').where({ date: today }).get();
+                
+                if (res.data.length > 0) {
+                    const taskDoc = res.data[0];
+                    todayTask.leader = taskDoc.leader || [];
+                    todayTask.monitor = taskDoc.monitor || [];
+                } else {
+                    todayTask = { leader: [], monitor: [] };
+                }
+                
+                updateTaskDisplay();
+            } catch (e) {
+                console.error("加载作业失败：", e);
+                taskContent.innerHTML = "作业加载失败，请刷新页面";
+            }
+        }
+
+        function updateTaskDisplay() {
+            let finalTask = [];
+            let source = "";
+
+            // 规则：班长优先
+            if (todayTask.monitor.length > 0) {
+                finalTask = todayTask.monitor;
+                source = "（由班长发布）";
+            } else if (todayTask.leader.length > 0) {
+                finalTask = todayTask.leader;
+                source = "（由组长发布）";
+            } else {
+                taskContent.innerHTML = "今日暂无作业，请等待组长或班长布置。";
+                return;
+            }
+
+            // 格式化显示
+            const groups = {};
+            finalTask.forEach(t => {
+                if (!groups[t.book]) groups[t.book] = [];
+                groups[t.book].push(t.chapter);
+            });
+
+            let html = "";
+            for (let [book, chapters] of Object.entries(groups)) {
+                html += `${book}：${chapters.sort((a,b)=>a-b).join('、')}章；`;
+            }
+            taskContent.innerHTML = html.slice(0, -1) + `<br><span style="font-size:12px;color:#999;">${source}</span>`;
+        }
+
+        saveTaskBtn.onclick = async function() {
+            if (tempTask.length === 0) {
+                alert("请选择章节！");
+                return;
+            }
+
+            try {
+                const taskData = { date: today };
+
+                // 根据身份更新对应作业
+                if (currentUser.role === 'monitor') {
+                    taskData.monitor = tempTask;
+                    taskData.leader = todayTask.leader;
+                } else if (currentUser.role === 'leader') {
+                    taskData.leader = tempTask;
+                    taskData.monitor = todayTask.monitor;
+                }
+
+                // 检查今日是否已有记录
+                const res = await db.collection('bible_tasks').where({ date: today }).get();
+
+                if (res.data.length > 0) {
+                    await db.collection('bible_tasks').doc(res.data[0]._id).update(taskData);
+                } else {
+                    await db.collection('bible_tasks').add(taskData);
+                }
+
+                alert("发布成功！");
+                todayTask[currentUser.role] = tempTask;
+                updateTaskDisplay();
+                clearTaskBtn.click();
+            } catch (e) {
+                console.error("发布作业失败：", e);
+                alert("发布失败，请重试");
+            }
+        };
+
+        // ========== 签到逻辑 ==========
+        quickSignBtn.onclick = async function() {
+            let taskToSign = [];
+            if (todayTask.monitor.length > 0) {
+                taskToSign = todayTask.monitor;
+            } else if (todayTask.leader.length > 0) {
+                taskToSign = todayTask.leader;
+            } else {
+                alert("今日暂无作业！");
+                return;
+            }
+
+            await signChapters(taskToSign);
+        };
+
+        signBtn.onclick = async function() {
+            if (!personalTempSelectedBook || personalTempSelectedChapters.length === 0) {
+                alert("请选择章节！");
+                return;
+            }
+
+            const tasks = personalTempSelectedChapters.map(c => ({
+                book: personalTempSelectedBook,
+                chapter: c
+            }));
+
+            await signChapters(tasks);
+            
+            // 清空选择
+            personalTempSelectedChapters = [];
+            Array.from(personalChapterGrid.children).forEach(i => i.classList.remove('active'));
+            personalChapterSelector.style.display = 'none';
+            // 清空书籍选中状态
+            Array.from(document.querySelectorAll('.personal-sign .book-item')).forEach(i => i.classList.remove('active'));
+        };
+
+        async function signChapters(tasks) {
+            try {
+                const records = await db.collection('bible_records').where({ 
+                    _openid: currentUser.openid 
+                }).get();
+
+                let userRecord = {};
+                if (records.data.length > 0) {
+                    userRecord = records.data[0];
+                } else {
+                    userRecord = {
+                        _openid: currentUser.openid,
+                        nickname: currentUser.nickname,
+                        data: {}
+                    };
+                }
+
+                // 更新记录
+                tasks.forEach(t => {
+                    const key = `${t.book}-${t.chapter}`;
+                    userRecord.data[key] = (userRecord.data[key] || 0) + 1;
+                });
+
+                if (records.data.length > 0) {
+                    await db.collection('bible_records').doc(userRecord._id).update({
+                        data: userRecord.data,
+                        nickname: currentUser.nickname
+                    });
+                } else {
+                    await db.collection('bible_records').add(userRecord);
+                }
+
+                alert(`签到成功！共完成 ${tasks.length} 个章节。`);
+                loadMyProgress();
+                if (currentUser.role !== 'member') loadAllRecords();
+            } catch (e) {
+                console.error("签到失败：", e);
+                alert("签到失败，请重试");
+            }
+        }
+
+        // ========== UI 辅助函数 (格子渲染) ==========
+        function initBookGrid(container, books, isTask) {
+            container.innerHTML = '';
+            Object.keys(books).forEach(book => {
+                const div = document.createElement('div');
+                div.className = 'book-item';
+                div.textContent = book;
+                div.dataset.book = book;
+                div.dataset.chapters = books[book];
+
+                div.onclick = function() {
+                    // 移除同区域其他书籍的选中状态
+                    const siblingBooks = container.querySelectorAll('.book-item');
+                    siblingBooks.forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+
+                    const b = this.dataset.book;
+                    const c = parseInt(this.dataset.chapters);
+
+                    if (isTask) {
+                        tempSelectedBook = b;
+                        selectedBookName.textContent = b;
+                        chapterSelector.style.display = 'block';
+                        initChapterGrid(chapterGrid, c, true);
+                    } else {
+                        personalTempSelectedBook = b;
+                        personalSelectedBookName.textContent = b;
+                        personalChapterSelector.style.display = 'block';
+                        initChapterGrid(personalChapterGrid, c, false);
+                    }
+                };
+
+                container.appendChild(div);
+            });
+        }
+
+        function initChapterGrid(container, count, isTask) {
+            container.innerHTML = '';
+            const selectedSet = isTask ? tempSelectedChapters : personalTempSelectedChapters;
+
+            for (let i = 1; i <= count; i++) {
+                const div = document.createElement('div');
+                div.className = 'chapter-item';
+                div.textContent = i;
+                div.dataset.chapter = i;
+
+                if (selectedSet.includes(i)) div.classList.add('active');
+
+                div.onclick = function() {
+                    this.classList.toggle('active');
+                    const c = parseInt(this.dataset.chapter);
+                    const arr = isTask ? tempSelectedChapters : personalTempSelectedChapters;
+
+                    if (this.classList.contains('active')) {
+                        if (!arr.includes(c)) arr.push(c);
+                    } else {
+                        const idx = arr.indexOf(c);
+                        if (idx > -1) arr.splice(idx, 1);
+                    }
+
+                    // 更新作业预览
+                    if (isTask) updateTaskPreview();
+                };
+
+                container.appendChild(div);
+            }
+        }
+
+        function updateTaskPreview() {
+            if (!tempSelectedBook || tempSelectedChapters.length === 0) {
+                selectedTaskText.textContent = "未选择任何章节";
+                return;
+            }
+
+            // 合并到总临时任务
+            tempTask = tempTask.filter(t => t.book !== tempSelectedBook);
+            tempSelectedChapters.forEach(c => {
+                tempTask.push({ book: tempSelectedBook, chapter: c });
+            });
+
+            // 去重
+            const unique = {};
+            tempTask.forEach(t => unique[`${t.book}-${t.chapter}`] = t);
+            tempTask = Object.values(unique);
+
+            // 显示
+            const groups = {};
+            tempTask.forEach(t => {
+                if (!groups[t.book]) groups[t.book] = [];
+                groups[t.book].push(t.chapter);
+            });
+
+            let text = "";
+            Object.keys(groups).forEach(book => {
+                text += `${book}：${groups[book].sort((a,b)=>a-b).join('、')}章；`;
+            });
+            selectedTaskText.textContent = text.slice(0, -1);
+        }
+
+        clearTaskBtn.onclick = function() {
+            tempTask = [];
+            tempSelectedBook = '';
+            tempSelectedChapters = [];
+            selectedTaskText.textContent = "未选择任何章节";
+            chapterSelector.style.display = 'none';
+            Array.from(document.querySelectorAll('.book-item')).forEach(i => i.classList.remove('active'));
+        };
+
+        // ========== 进度与记录 ==========
+        function loadMyProgress() {
+            db.collection('bible_records').where({ _openid: currentUser.openid }).get().then(res => {
+                let data = {};
+                if (res.data.length > 0) data = res.data[0].data;
+                
+                const stats = calculateStats(data);
+                renderProgress(stats, currentUser.nickname);
+            }).catch(e => {
+                console.error("加载进度失败：", e);
+                progressArea.innerHTML = "<div class='progress-item'>进度加载失败</div>";
+            });
+        }
+
+        function loadAllRecords() {
+            db.collection('bible_records').get().then(res => {
+                const records = res.data;
+                let html = "<h3>全员阅读记录</h3>";
+                
+                if (records.length === 0) {
+                    html += "<div class='member-item'>暂无成员记录</div>";
+                } else {
+                    records.forEach(r => {
+                        const stats = calculateStats(r.data);
+                        let statsText = "暂无进度";
+                        if (Object.keys(stats).length) {
+                            statsText = Object.entries(stats).map(([k, v]) => `第${k}遍 ${v}%`).join(', ');
+                        }
+                        html += `<div class="member-item"><strong>${r.nickname}</strong>：${statsText}</div>`;
+                    });
+                }
+                
+                allRecords.innerHTML = html;
+            }).catch(e => {
+                console.error("加载全员记录失败：", e);
+                allRecords.innerHTML = "<h3>全员阅读记录</h3><div class='member-item'>记录加载失败</div>";
+            });
+        }
+
+        function calculateStats(data) {
+            const total = 1189;
+            const counts = {};
+            let maxTimes = 0;
+
+            Object.values(data).forEach(times => {
+                maxTimes = Math.max(maxTimes, times);
+                for (let i = 1; i <= times; i++) {
+                    counts[i] = (counts[i] || 0) + 1;
+                }
+            });
+
+            const result = {};
+            for (let i = 1; i <= maxTimes; i++) {
+                result[i] = ((counts[i] / total) * 100).toFixed(1);
+            }
+            return result;
+        }
+
+        function renderProgress(stats, name) {
+            if (Object.keys(stats).length === 0) {
+                progressArea.innerHTML = `<div class="progress-item">${name} 暂无阅读记录，快来签到吧！</div>`;
+                return;
+            }
+
+            let html = `<div class="progress-item"><strong>${name} 的阅读进度：</strong></div>`;
+            for (let [times, percent] of Object.entries(stats)) {
+                html += `<div class="progress-item">第 ${times} 遍：${percent}%</div>`;
+            }
+            progressArea.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
